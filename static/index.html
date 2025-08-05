@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 LLM Insurance Document Analyzer - Hackathon Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary-color: #f8fafc;
+            --accent-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            --gradient-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--gradient-bg);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header p {
+            font-size: 1.25rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .main-card {
+            background: white;
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: var(--shadow-lg);
+            margin-bottom: 2rem;
+        }
+
+        .query-section {
+            margin-bottom: 2rem;
+        }
+
+        .query-label {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .query-input-container {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .query-input {
+            width: 100%;
+            padding: 1.25rem 1.5rem;
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s ease;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .query-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .query-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.875rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-secondary {
+            background: var(--secondary-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: #f1f5f9;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .example-queries {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .example-query {
+            padding: 1rem;
+            background: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .example-query:hover {
+            background: #f1f5f9;
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--border-color);
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+        }
+
+        .results.show {
+            display: block;
+        }
+
+        .result-header {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: var(--secondary-color);
+            border-radius: 16px;
+        }
+
+        .result-metric {
+            text-align: center;
+        }
+
+        .result-metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.25rem;
+        }
+
+        .result-metric-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .status-covered {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-not-covered {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-partial {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .clauses-section {
+            margin-top: 2rem;
+        }
+
+        .clauses-header {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .clause-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .clause-card:hover {
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-md);
+        }
+
+        .clause-header {
+            padding: 1.5rem;
+            background: var(--secondary-color);
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .clause-info {
+            flex: 1;
+        }
+
+        .clause-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .clause-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .clause-content {
+            padding: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            display: none;
+        }
+
+        .clause-content.show {
+            display: block;
+        }
+
+        .clause-text {
+            line-height: 1.7;
+            color: var(--text-primary);
+        }
+
+        .justification {
+            background: #f8fafc;
+            border-left: 4px solid var(--primary-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+
+        .justification-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .system-stats {
+            background: white;
+            border-radius: 24px;
+            padding: 2rem;
+            box-shadow: var(--shadow-lg);
+            margin-top: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 1rem;
+            background: var(--secondary-color);
+            border-radius: 12px;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        .error-message {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .main-card {
+                padding: 1.5rem;
+                border-radius: 16px;
+            }
+
+            .query-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .btn {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1><i class="fas fa-robot"></i> LLM Insurance Analyzer</h1>
+            <p>Advanced AI-powered insurance document analysis for instant policy insights</p>
+        </div>
+
+        <!-- Main Query Interface -->
+        <div class="main-card">
+            <div class="query-section">
+                <label class="query-label">
+                    <i class="fas fa-search"></i>
+                    Ask anything about your insurance policy
+                </label>
+                
+                <div class="query-input-container">
+                    <textarea 
+                        id="queryInput" 
+                        class="query-input" 
+                        placeholder="e.g., What are the health insurance coverage limits for a 46-year-old male?"
+                    ></textarea>
+                </div>
+
+                <div class="query-actions">
+                    <button id="analyzeBtn" class="btn btn-primary">
+                        <i class="fas fa-brain"></i>
+                        Analyze with AI
+                    </button>
+                    <button id="clearBtn" class="btn btn-secondary">
+                        <i class="fas fa-eraser"></i>
+                        Clear
+                    </button>
+                </div>
+
+                <!-- Example Queries -->
+                <div class="example-queries">
+                    <div class="example-query" onclick="setQuery('What are the health insurance coverage limits?')">
+                        <i class="fas fa-heart-pulse"></i> Health insurance coverage limits
+                    </div>
+                    <div class="example-query" onclick="setQuery('Is knee surgery covered under the policy?')">
+                        <i class="fas fa-user-doctor"></i> Knee surgery coverage
+                    </div>
+                    <div class="example-query" onclick="setQuery('What documents are required for claims?')">
+                        <i class="fas fa-file-medical"></i> Required claim documents
+                    </div>
+                    <div class="example-query" onclick="setQuery('What are the exclusions for pre-existing diseases?')">
+                        <i class="fas fa-shield-halved"></i> Pre-existing disease exclusions
+                    </div>
+                    <div class="example-query" onclick="setQuery('What is the waiting period for maternity benefits?')">
+                        <i class="fas fa-baby"></i> Maternity waiting period
+                    </div>
+                    <div class="example-query" onclick="setQuery('Is cashless treatment available in hospitals?')">
+                        <i class="fas fa-hospital"></i> Cashless treatment options
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading main-card">
+            <div class="spinner"></div>
+            <h3>🧠 AI is analyzing your query...</h3>
+            <p>Please wait while we search through insurance documents and apply advanced LLM processing.</p>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="errorText"></span>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="results">
+            <!-- Result Header with Metrics -->
+            <div class="main-card">
+                <div class="result-header">
+                    <div class="result-metric">
+                        <div id="decision" class="result-metric-value">-</div>
+                        <div class="result-metric-label">Decision</div>
+                    </div>
+                    <div class="result-metric">
+                        <div id="confidence" class="result-metric-value">-</div>
+                        <div class="result-metric-label">Confidence</div>
+                    </div>
+                    <div class="result-metric">
+                        <div id="amount" class="result-metric-value">-</div>
+                        <div class="result-metric-label">Coverage Amount</div>
+                    </div>
+                    <div class="result-metric">
+                        <div id="clausesCount" class="result-metric-value">-</div>
+                        <div class="result-metric-label">Relevant Clauses</div>
+                    </div>
+                    <div class="result-metric">
+                        <div id="processingTime" class="result-metric-value">-</div>
+                        <div class="result-metric-label">Processing Time</div>
+                    </div>
+                </div>
+
+                <!-- AI Justification -->
+                <div id="justificationSection" class="justification">
+                    <div class="justification-title">
+                        <i class="fas fa-lightbulb"></i>
+                        AI Analysis & Justification
+                    </div>
+                    <div id="justificationText"></div>
+                </div>
+            </div>
+
+            <!-- Relevant Clauses -->
+            <div class="main-card">
+                <div class="clauses-section">
+                    <div class="clauses-header">
+                        <i class="fas fa-file-contract"></i>
+                        Relevant Policy Clauses
+                    </div>
+                    <div id="clausesList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Statistics -->
+        <div class="system-stats">
+            <h3 style="text-align: center; margin-bottom: 2rem; color: var(--text-primary);">
+                <i class="fas fa-chart-line"></i> System Performance
+            </h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div id="docsLoaded" class="stat-value">-</div>
+                    <div class="stat-label">Documents Loaded</div>
+                </div>
+                <div class="stat-item">
+                    <div id="totalClauses" class="stat-value">-</div>
+                    <div class="stat-label">Total Clauses</div>
+                </div>
+                <div class="stat-item">
+                    <div id="processorType" class="stat-value">-</div>
+                    <div class="stat-label">AI Processor</div>
+                </div>
+                <div class="stat-item">
+                    <div id="systemStatus" class="stat-value">-</div>
+                    <div class="stat-label">System Status</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let isProcessing = false;
+
+        // DOM elements
+        const queryInput = document.getElementById('queryInput');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSystemStats();
+            
+            // Event listeners
+            analyzeBtn.addEventListener('click', analyzeQuery);
+            clearBtn.addEventListener('click', clearQuery);
+            queryInput.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    analyzeQuery();
+                }
+            });
+        });
+
+        // Set example query
+        function setQuery(query) {
+            queryInput.value = query;
+            queryInput.focus();
+        }
+
+        // Clear query and results
+        function clearQuery() {
+            queryInput.value = '';
+            results.classList.remove('show');
+            errorMessage.classList.remove('show');
+            queryInput.focus();
+        }
+
+        // Main analysis function
+        async function analyzeQuery() {
+            const query = queryInput.value.trim();
+            
+            if (!query) {
+                showError('Please enter a query to analyze.');
+                return;
+            }
+
+            if (isProcessing) return;
+
+            setProcessingState(true);
+            hideError();
+
+            try {
+                const response = await fetch('/process_query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        include_detailed_response: true
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                console.error('Analysis error:', error);
+                showError(`Analysis failed: ${error.message}. Please try again.`);
+            } finally {
+                setProcessingState(false);
+            }
+        }
+
+        // Display analysis results
+        function displayResults(data) {
+            // Update metrics
+            document.getElementById('decision').textContent = formatDecision(data.decision);
+            document.getElementById('confidence').textContent = `${(data.confidence * 100).toFixed(1)}%`;
+            document.getElementById('amount').textContent = formatAmount(data.amount);
+            document.getElementById('clausesCount').textContent = data.clauses_mapping?.length || 0;
+            document.getElementById('processingTime').textContent = 
+                `${data.processing_metadata?.processing_time_seconds?.toFixed(2) || 0}s`;
+
+            // Update justification
+            document.getElementById('justificationText').textContent = 
+                data.justification || 'No detailed justification available.';
+
+            // Display clauses
+            displayClauses(data.clauses_mapping || []);
+
+            // Show results
+            results.classList.add('show');
+            results.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Display individual clauses
+        function displayClauses(clauses) {
+            const clausesList = document.getElementById('clausesList');
+            clausesList.innerHTML = '';
+
+            if (clauses.length === 0) {
+                clausesList.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                        <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+                        <h3>No specific clauses found</h3>
+                        <p>The AI analysis was based on general policy knowledge.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            clauses.forEach((clause, index) => {
+                const clauseCard = document.createElement('div');
+                clauseCard.className = 'clause-card';
+                clauseCard.innerHTML = `
+                    <div class="clause-header" onclick="toggleClause(${index})">
+                        <div class="clause-info">
+                            <div class="clause-title">
+                                Clause ${index + 1}: ${clause.clause_type || 'General Clause'}
+                            </div>
+                            <div class="clause-meta">
+                                <span><i class="fas fa-file-pdf"></i> ${clause.document || 'Unknown Document'}</span>
+                                <span><i class="fas fa-percentage"></i> ${(clause.similarity_score * 100).toFixed(1)}% relevance</span>
+                                <span><i class="fas fa-search"></i> ${clause.search_method || 'AI Search'}</span>
+                            </div>
+                        </div>
+                        <i class="fas fa-chevron-down" id="chevron-${index}"></i>
+                    </div>
+                    <div class="clause-content" id="content-${index}">
+                        <div class="clause-text">${clause.clause_text || 'No clause text available.'}</div>
+                    </div>
+                `;
+                clausesList.appendChild(clauseCard);
+            });
+        }
+
+        // Toggle clause content visibility
+        function toggleClause(index) {
+            const content = document.getElementById(`content-${index}`);
+            const chevron = document.getElementById(`chevron-${index}`);
+            
+            content.classList.toggle('show');
+            chevron.style.transform = content.classList.contains('show') ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+
+        // Load system statistics
+        async function loadSystemStats() {
+            try {
+                const response = await fetch('/stats');
+                if (response.ok) {
+                    const stats = await response.json();
+                    
+                    document.getElementById('docsLoaded').textContent = stats.documents_loaded || 0;
+                    document.getElementById('totalClauses').textContent = stats.total_clauses || 0;
+                    document.getElementById('processorType').textContent = 
+                        (stats.processor_type || 'unknown').toUpperCase();
+                    document.getElementById('systemStatus').textContent = 
+                        (stats.system_status || 'unknown').toUpperCase();
+                }
+            } catch (error) {
+                console.warn('Failed to load system stats:', error);
+            }
+        }
+
+        // Utility functions
+        function formatDecision(decision) {
+            const decisions = {
+                'covered': 'COVERED',
+                'not_covered': 'NOT COVERED',
+                'partial': 'PARTIAL',
+                'error': 'ERROR'
+            };
+            return decisions[decision] || decision?.toUpperCase() || 'UNKNOWN';
+        }
+
+        function formatAmount(amount) {
+            if (!amount || amount === 0) return '₹0';
+            return `₹${amount.toLocaleString('en-IN')}`;
+        }
+
+        function setProcessingState(processing) {
+            isProcessing = processing;
+            analyzeBtn.disabled = processing;
+            
+            if (processing) {
+                analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+                loading.classList.add('show');
+                results.classList.remove('show');
+            } else {
+                analyzeBtn.innerHTML = '<i class="fas fa-brain"></i> Analyze with AI';
+                loading.classList.remove('show');
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('errorText').textContent = message;
+            errorMessage.classList.add('show');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('show');
+        }
+    </script>
+</body>
+</html>
