@@ -86,7 +86,7 @@ class LightweightDocumentProcessor:
             return
         
         # Process PDFs
-        for filename in pdf_files[:3]:  # Limit to 3 files for quick loading
+        for filename in pdf_files:  # Process all PDF files
             file_path = os.path.join(folder_path, filename)
             try:
                 text = self._extract_text_from_pdf(file_path)
@@ -356,14 +356,30 @@ class LightweightDocumentProcessor:
         if any(word in query_lower for word in ['emergency', 'urgent', 'immediate']):
             parsed_data["urgency"] = "high"
         
-        # Calculate confidence
-        confidence_factors = [
+        # Calculate confidence based on multiple factors
+        confidence_factors = []
+        
+        # Data completeness (30% weight)
+        data_completeness = [
             parsed_data["age"] is not None,
             parsed_data["gender"] is not None,
             parsed_data["procedure"] is not None,
             parsed_data["location"] is not None
         ]
-        parsed_data["confidence"] = sum(confidence_factors) / len(confidence_factors)
+        completeness_score = sum(data_completeness) / len(data_completeness)
+        confidence_factors.append(completeness_score * 0.3)
+        
+        # Query clarity (40% weight) 
+        query_length = len(parsed_data["raw_query"].split())
+        clarity_score = min(query_length / 10, 1.0)  # Normalize to 1.0
+        confidence_factors.append(clarity_score * 0.4)
+        
+        # Medical procedure detection (30% weight)
+        procedure_score = 1.0 if parsed_data["procedure"] else 0.3
+        confidence_factors.append(procedure_score * 0.3)
+        
+        # Final confidence (minimum 20% for any valid query)
+        parsed_data["confidence"] = max(sum(confidence_factors), 0.2)
         
         return parsed_data
     
@@ -451,20 +467,25 @@ class LightweightDocumentProcessor:
         if parsed_query.get('urgency') == 'high':
             risk_factors.append("Emergency treatment - priority processing")
         
-        # Make decision
+        # Make decision with improved confidence calculation
+        base_confidence = max(coverage_score, exclusion_score, 0.1)  # Minimum 10%
+        
         if coverage_score > exclusion_score and coverage_score > 0.3:
             if len(risk_factors) == 0:
                 decision["status"] = "approved"
                 decision["amount"] = max(amount_found, 50000)  # Default minimum
-                decision["confidence"] = min(coverage_score, 0.9)
+                # High confidence for clear approvals
+                decision["confidence"] = min(base_confidence * 1.2, 0.95)
             else:
                 decision["status"] = "conditional_approval"
                 decision["amount"] = max(amount_found * 0.8, 25000)
-                decision["confidence"] = min(coverage_score * 0.8, 0.85)
+                # Moderate confidence for conditional approvals
+                decision["confidence"] = min(base_confidence * 0.9, 0.80)
         elif exclusion_score > coverage_score:
             decision["status"] = "rejected"
             decision["amount"] = 0
-            decision["confidence"] = min(exclusion_score, 0.9)
+            # High confidence for clear rejections
+            decision["confidence"] = min(base_confidence * 1.1, 0.90)
         else:
             decision["status"] = "review_required"
             decision["amount"] = 0

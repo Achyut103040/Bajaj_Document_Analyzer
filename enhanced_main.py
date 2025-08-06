@@ -21,6 +21,13 @@ try:
     HAS_PYMUPDF = True
 except ImportError:
     HAS_PYMUPDF = False
+
+# Setup logging EARLY
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Now we can use logger
+if not HAS_PYMUPDF:
     logger.warning("PyMuPDF not found. Using PyPDF2 only for PDF extraction.")
 
 from sentence_transformers import SentenceTransformer
@@ -35,12 +42,28 @@ from transformers import (
     AutoTokenizer, AutoModel, AutoModelForQuestionAnswering,
     pipeline, BertTokenizer, BertModel, AutoModelForSequenceClassification
 )
+
+# OpenAI GPT-4 (Hackathon recommended)
+try:
+    import openai
+    from openai import OpenAI
+    HAS_OPENAI = True
+except ImportError:
+    HAS_OPENAI = False
+    logger.warning("OpenAI not found. Install: pip install openai")
+
+# Pinecone Vector DB (Hackathon recommended)
+try:
+    import pinecone
+    from pinecone import Pinecone, ServerlessSpec
+    HAS_PINECONE = True
+except ImportError:
+    HAS_PINECONE = False
+    logger.warning("Pinecone not found. Install: pip install pinecone-client")
+
+import torch
 import torch
 import torch.nn.functional as F
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 class OptimizedDocumentProcessor:
     """
@@ -64,8 +87,17 @@ class OptimizedDocumentProcessor:
         # Download required NLTK data
         self._setup_nltk()
         
-        # Initialize device
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Initialize device with detailed GPU info
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            logger.info(f"🚀 Using GPU: {gpu_name} ({gpu_memory:.1f}GB VRAM)")
+            logger.info(f"🔥 CUDA Version: {torch.version.cuda}")
+        else:
+            self.device = torch.device('cpu')
+            logger.warning("⚠️ GPU not available, using CPU")
+        
         logger.info(f"Using device: {self.device}")
         
         # Initialize models
@@ -93,18 +125,37 @@ class OptimizedDocumentProcessor:
         logger.info("Document processor initialized successfully!")
     
     def _default_config(self) -> Dict[str, Any]:
-        """Default configuration settings"""
+        """Default configuration settings for hackathon demo"""
         return {
+            # GPT-4 Configuration (Hackathon Recommended)
+            'llm_model': 'gpt-4',
+            'llm_api_key': os.getenv('OPENAI_API_KEY', ''),
+            'use_gpt4': True,
+            
+            # Fallback models for demo resilience
             'qa_model': 'deepset/roberta-base-squad2',
             'sentence_model': 'all-MiniLM-L6-v2',
             'classification_model': 'microsoft/DialoGPT-medium',
-            'max_sequence_length': 512,
-            'batch_size': 16,
-            'similarity_threshold': 0.7,
-            'confidence_threshold': 0.6,
-            'max_clauses_per_search': 10,
+            
+            # Pinecone Configuration (Hackathon Recommended)
+            'pinecone_api_key': os.getenv('PINECONE_API_KEY', ''),
+            'pinecone_environment': os.getenv('PINECONE_ENVIRONMENT', 'us-east-1-aws'),
+            'pinecone_index_name': 'insurance-clauses',
+            'use_pinecone': True,
+            
+            # Processing settings
+            'max_sequence_length': 4096,  # GPT-4 supports longer sequences
+            'batch_size': 8,  # Smaller batches for GPT-4 API calls
+            'similarity_threshold': 0.8,  # Higher threshold for GPT-4
+            'confidence_threshold': 0.7,
+            'max_clauses_per_search': 15,
             'enable_gpu': True,
-            'cache_embeddings': True
+            'cache_embeddings': True,
+            
+            # API settings
+            'max_tokens': 1500,
+            'temperature': 0.1,  # Low temperature for consistent responses
+            'top_p': 0.9
         }
     
     def _setup_nltk(self):
@@ -117,10 +168,47 @@ class OptimizedDocumentProcessor:
             logger.warning(f"NLTK setup warning: {e}")
     
     def _initialize_models(self):
-        """Initialize all ML models"""
+        """Initialize models with GPT-4 as primary LLM (Hackathon Spec)"""
         try:
-            # Question Answering pipeline with better model
-            logger.info("Loading QA model...")
+            # Initialize GPT-4 (Primary LLM for Hackathon)
+            if HAS_OPENAI and self.config['llm_api_key']:
+                logger.info("Initializing GPT-4 (Primary LLM)...")
+                self.openai_client = OpenAI(api_key=self.config['llm_api_key'])
+                self.use_gpt4 = True
+                logger.info("✅ GPT-4 initialized successfully!")
+            else:
+                logger.warning("⚠️ GPT-4 not available. Using fallback models.")
+                self.use_gpt4 = False
+            
+            # Initialize Pinecone (Primary Vector DB for Hackathon)
+            if HAS_PINECONE and self.config['pinecone_api_key']:
+                logger.info("Initializing Pinecone Vector Database...")
+                self.pc = Pinecone(api_key=self.config['pinecone_api_key'])
+                
+                # Create index if it doesn't exist
+                index_name = self.config['pinecone_index_name']
+                if index_name not in self.pc.list_indexes().names():
+                    self.pc.create_index(
+                        name=index_name,
+                        dimension=384,  # all-MiniLM-L6-v2 dimension
+                        metric='cosine',
+                        spec=ServerlessSpec(
+                            cloud='aws',
+                            region='us-east-1'
+                        )
+                    )
+                
+                self.pinecone_index = self.pc.Index(index_name)
+                self.use_pinecone = True
+                logger.info("✅ Pinecone initialized successfully!")
+            else:
+                logger.warning("⚠️ Pinecone not available. Using FAISS fallback.")
+                self.use_pinecone = False
+            
+            # Fallback Models (for demo resilience)
+            logger.info("Loading fallback models for demo resilience...")
+            
+            # Question Answering pipeline
             self.qa_pipeline = pipeline(
                 "question-answering",
                 model=self.config['qa_model'],
@@ -131,32 +219,22 @@ class OptimizedDocumentProcessor:
             )
             
             # Sentence transformer for embeddings
-            logger.info("Loading sentence transformer...")
             self.sentence_model = SentenceTransformer(
                 self.config['sentence_model'],
                 device=self.device
             )
             
-            # Classification model for intent detection
-            logger.info("Loading classification model...")
-            self.classifier = pipeline(
-                "text-classification",
-                model="microsoft/DialoGPT-medium",
-                device=0 if torch.cuda.is_available() and self.config['enable_gpu'] else -1
-            )
-            
-            # Initialize tokenizer for advanced text processing
-            self.tokenizer = AutoTokenizer.from_pretrained(self.config['qa_model'])
-            
             # NLTK components
             self.lemmatizer = WordNetLemmatizer()
             self.stop_words = set(stopwords.words('english'))
             
-            logger.info("All models loaded successfully!")
+            logger.info("🚀 All models loaded successfully!")
             
         except Exception as e:
-            logger.error(f"Error initializing models: {e}")
-            raise
+            logger.error(f"❌ Error initializing models: {e}")
+            # Continue with fallback models
+            self.use_gpt4 = False
+            self.use_pinecone = False
     
     def _initialize_domain_knowledge(self):
         """Initialize insurance domain-specific knowledge"""
@@ -253,23 +331,42 @@ class OptimizedDocumentProcessor:
     
     def _process_single_document(self, file_path: str, filename: str) -> Optional[Dict[str, Any]]:
         """Process a single document with enhanced extraction"""
+        logger.info(f"Processing document: {filename}")
+        
         try:
+            text = ""
+            
             # Try PyMuPDF first (better extraction) if available
             if HAS_PYMUPDF:
                 try:
                     text = self._extract_text_pymupdf(file_path)
-                except:
+                    logger.info(f"PyMuPDF successfully extracted {len(text)} characters from {filename}")
+                except Exception as e:
+                    logger.warning(f"PyMuPDF failed for {filename}: {e}")
                     # Fallback to PyPDF2
-                    text = self._extract_text_pypdf2(file_path)
+                    try:
+                        text = self._extract_text_pypdf2(file_path)
+                        logger.info(f"PyPDF2 fallback extracted {len(text)} characters from {filename}")
+                    except Exception as e2:
+                        logger.error(f"Both PyMuPDF and PyPDF2 failed for {filename}: PyMuPDF={e}, PyPDF2={e2}")
+                        return None
             else:
                 # Use PyPDF2 directly
-                text = self._extract_text_pypdf2(file_path)
+                try:
+                    text = self._extract_text_pypdf2(file_path)
+                    logger.info(f"PyPDF2 extracted {len(text)} characters from {filename}")
+                except Exception as e:
+                    logger.error(f"PyPDF2 failed for {filename}: {e}")
+                    return None
             
-            if not text.strip():
+            if not text or not text.strip():
+                logger.warning(f"No text content extracted from {filename}")
                 return None
             
             # Extract metadata
             metadata = self._extract_document_metadata(text, filename)
+            
+            logger.info(f"Successfully processed {filename}: {len(text)} chars, {metadata.get('page_count', 0)} pages")
             
             return {
                 'text': text,
@@ -277,7 +374,9 @@ class OptimizedDocumentProcessor:
             }
             
         except Exception as e:
-            logger.error(f"Error processing {filename}: {e}")
+            logger.error(f"Unexpected error processing {filename}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def _extract_text_pymupdf(self, pdf_path: str) -> str:
@@ -286,30 +385,58 @@ class OptimizedDocumentProcessor:
             raise Exception("PyMuPDF not available")
         
         text = ""
+        doc = None
         try:
             doc = fitz.open(pdf_path)
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                page_text = page.get_text()
-                if page_text:
-                    text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
-            doc.close()
-        except:
-            raise Exception("PyMuPDF extraction failed")
+            page_count = len(doc)
+            logger.debug(f"PyMuPDF opened {pdf_path}: {page_count} pages")
+            
+            for page_num in range(page_count):
+                try:
+                    page = doc.load_page(page_num)
+                    page_text = page.get_text()
+                    if page_text and page_text.strip():
+                        text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
+                except Exception as e:
+                    logger.warning(f"Error extracting page {page_num + 1} from {pdf_path}: {e}")
+                    continue
+                    
+            logger.debug(f"PyMuPDF extracted {len(text)} characters from {page_count} pages")
+                    
+        except Exception as e:
+            logger.error(f"PyMuPDF failed to open {pdf_path}: {e}")
+            raise Exception(f"PyMuPDF extraction failed: {e}")
+        finally:
+            if doc is not None:
+                try:
+                    doc.close()
+                except:
+                    pass
         return text
     
     def _extract_text_pypdf2(self, pdf_path: str) -> str:
         """Fallback extraction using PyPDF2"""
         text = ""
-        with open(pdf_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            for page_num, page in enumerate(pdf_reader.pages):
-                try:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
-                except Exception as e:
-                    logger.warning(f"Error extracting page {page_num + 1}: {e}")
+        try:
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                total_pages = len(pdf_reader.pages)
+                
+                for page_num, page in enumerate(pdf_reader.pages):
+                    try:
+                        page_text = page.extract_text()
+                        if page_text and page_text.strip():
+                            text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
+                    except Exception as e:
+                        logger.warning(f"Error extracting page {page_num + 1} from {pdf_path}: {e}")
+                        continue
+                        
+                logger.info(f"PyPDF2 extracted text from {pdf_path}: {len(text)} characters, {total_pages} pages")
+                
+        except Exception as e:
+            logger.error(f"PyPDF2 failed to process {pdf_path}: {e}")
+            raise Exception(f"PyPDF2 extraction failed: {e}")
+            
         return text
     
     def _extract_document_metadata(self, text: str, filename: str) -> Dict[str, Any]:
@@ -978,12 +1105,25 @@ class OptimizedDocumentProcessor:
         # Determine coverage
         is_covered = coverage_indicators['positive'] > coverage_indicators['negative']
         
-        # Calculate confidence
+        # Calculate confidence with multiple factors
         total_indicators = sum(coverage_indicators.values())
-        if total_indicators > 0:
-            confidence = confidence_score / relevant_clauses if relevant_clauses > 0 else 0.0
+        if total_indicators > 0 and relevant_clauses > 0:
+            # Base confidence from similarity scores
+            avg_similarity = confidence_score / relevant_clauses
+            
+            # Coverage strength factor
+            coverage_strength = coverage_indicators['positive'] / total_indicators if total_indicators > 0 else 0
+            
+            # Clause relevance factor  
+            relevance_factor = min(relevant_clauses / 3, 1.0)  # Normalize to max 3 clauses
+            
+            # Combined confidence (minimum 15% for any analysis)
+            confidence = max(
+                (avg_similarity * 0.4 + coverage_strength * 0.4 + relevance_factor * 0.2),
+                0.15
+            )
         else:
-            confidence = 0.0
+            confidence = 0.1  # Low but not zero confidence
         
         return {
             'is_covered': is_covered,
@@ -1167,6 +1307,123 @@ class OptimizedDocumentProcessor:
         
         return recommendations
     
+    def _process_with_gpt4(self, query: str, relevant_clauses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Process query using GPT-4 (Hackathon Primary Method)"""
+        try:
+            if not self.use_gpt4 or not HAS_OPENAI:
+                raise Exception("GPT-4 not available")
+            
+            # Prepare context from relevant clauses
+            context = "\n\n".join([
+                f"Document: {clause.get('document', 'Unknown')}\n"
+                f"Clause: {clause.get('text', '')}"
+                for clause in relevant_clauses[:10]  # Top 10 clauses
+            ])
+            
+            # Create GPT-4 prompt
+            prompt = f"""
+You are an expert insurance policy analyst. Analyze the following query against the provided policy clauses and provide a structured decision.
+
+QUERY: "{query}"
+
+RELEVANT POLICY CLAUSES:
+{context}
+
+Please analyze and respond with a JSON structure containing:
+1. decision: "approved", "rejected", "conditional_approval", or "review_required"
+2. amount: estimated coverage amount in INR (number)
+3. confidence: confidence score 0.0 to 1.0
+4. justification: detailed explanation of the decision
+5. risk_factors: array of identified risk factors
+6. recommendations: array of recommendations for the patient
+
+Respond ONLY with valid JSON. Be thorough but concise.
+"""
+
+            # Call GPT-4 API
+            response = self.openai_client.chat.completions.create(
+                model=self.config['llm_model'],
+                messages=[
+                    {"role": "system", "content": "You are an expert insurance policy analyst. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.config['max_tokens'],
+                temperature=self.config['temperature'],
+                top_p=self.config['top_p']
+            )
+            
+            # Parse response
+            gpt_response = response.choices[0].message.content.strip()
+            
+            # Try to parse JSON
+            try:
+                result = json.loads(gpt_response)
+                
+                # Validate required fields
+                required_fields = ['decision', 'amount', 'confidence', 'justification']
+                for field in required_fields:
+                    if field not in result:
+                        result[field] = self._get_default_value(field)
+                
+                # Ensure proper types
+                result['amount'] = float(result.get('amount', 0))
+                result['confidence'] = min(max(float(result.get('confidence', 0)), 0.0), 1.0)
+                result['risk_factors'] = result.get('risk_factors', [])
+                result['recommendations'] = result.get('recommendations', [])
+                
+                logger.info("✅ GPT-4 processing successful")
+                return result
+                
+            except json.JSONDecodeError:
+                logger.warning("⚠️ GPT-4 returned invalid JSON, using fallback parsing")
+                return self._parse_gpt_text_response(gpt_response)
+                
+        except Exception as e:
+            logger.error(f"❌ GPT-4 processing failed: {e}")
+            raise Exception(f"GPT-4 processing error: {e}")
+    
+    def _get_default_value(self, field: str):
+        """Get default values for missing fields"""
+        defaults = {
+            'decision': 'review_required',
+            'amount': 0.0,
+            'confidence': 0.5,
+            'justification': 'Analysis completed with limited information',
+            'risk_factors': [],
+            'recommendations': []
+        }
+        return defaults.get(field, None)
+    
+    def _parse_gpt_text_response(self, text: str) -> Dict[str, Any]:
+        """Parse GPT-4 text response as fallback"""
+        result = {
+            'decision': 'review_required',
+            'amount': 0.0,
+            'confidence': 0.6,
+            'justification': text[:500] if text else 'GPT-4 analysis completed',
+            'risk_factors': [],
+            'recommendations': ['Manual review recommended due to parsing issues']
+        }
+        
+        # Try to extract decision keywords
+        text_lower = text.lower() if text else ''
+        if 'approved' in text_lower:
+            result['decision'] = 'approved'
+        elif 'rejected' in text_lower or 'denied' in text_lower:
+            result['decision'] = 'rejected'
+        elif 'conditional' in text_lower:
+            result['decision'] = 'conditional_approval'
+        
+        # Try to extract amounts
+        amounts = re.findall(r'[\d,]+', text)
+        if amounts:
+            try:
+                result['amount'] = float(amounts[0].replace(',', ''))
+            except:
+                pass
+        
+        return result
+
     def process_query(self, query: str) -> Dict[str, Any]:
         """Main method to process a natural language query"""
         start_time = datetime.now()
@@ -1220,11 +1477,50 @@ class OptimizedDocumentProcessor:
             # Search for relevant clauses
             relevant_clauses = self.search_relevant_clauses_hybrid(parsed_query)
             
-            # Evaluate decision
-            decision = self.evaluate_decision_advanced(parsed_query, relevant_clauses)
-            
-            # Generate detailed response using QA pipeline
-            detailed_response = self._generate_detailed_response(query, relevant_clauses)
+            # PRIMARY: Use GPT-4 for decision making (Hackathon Requirement)
+            try:
+                if self.use_gpt4:
+                    logger.info("🤖 Processing with GPT-4 (Primary Method)")
+                    gpt4_result = self._process_with_gpt4(query, relevant_clauses)
+                    
+                    # Convert GPT-4 result to our standard format
+                    decision = {
+                        "status": gpt4_result.get("decision", "review_required"),
+                        "amount": gpt4_result.get("amount", 0.0),
+                        "confidence": gpt4_result.get("confidence", 0.6),
+                        "justification": gpt4_result.get("justification", "GPT-4 analysis completed"),
+                        "risk_factors": gpt4_result.get("risk_factors", []),
+                        "recommendations": gpt4_result.get("recommendations", []),
+                        "clauses_used": relevant_clauses[:5],  # Top 5 clauses
+                        "method_used": "gpt4_primary"
+                    }
+                    
+                    # Generate detailed response using GPT-4 context
+                    detailed_response = f"🤖 **GPT-4 Analysis Result**\n\n"
+                    detailed_response += f"**Decision**: {decision['status'].upper()}\n"
+                    detailed_response += f"**Coverage Amount**: ₹{decision['amount']:,.0f}\n"
+                    detailed_response += f"**Confidence**: {decision['confidence']:.1%}\n\n"
+                    detailed_response += f"**Analysis**: {decision['justification']}\n\n"
+                    
+                    if decision['risk_factors']:
+                        detailed_response += f"**Risk Factors**: {', '.join(decision['risk_factors'])}\n\n"
+                    
+                    if decision['recommendations']:
+                        detailed_response += f"**Recommendations**:\n"
+                        for rec in decision['recommendations']:
+                            detailed_response += f"• {rec}\n"
+                    
+                else:
+                    raise Exception("GPT-4 not available")
+                    
+            except Exception as e:
+                # FALLBACK: Use traditional ML models
+                logger.warning(f"⚠️ GPT-4 failed ({e}), using fallback models...")
+                decision = self.evaluate_decision_advanced(parsed_query, relevant_clauses)
+                decision["method_used"] = "fallback_ml"
+                
+                # Generate detailed response using QA pipeline
+                detailed_response = self._generate_detailed_response(query, relevant_clauses)
             
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -1323,7 +1619,8 @@ class OptimizedDocumentProcessor:
             "models_loaded": {
                 "qa_pipeline": self.qa_pipeline is not None,
                 "sentence_transformer": self.sentence_model is not None,
-                "classifier": self.classifier is not None,
+                "gpt4_available": getattr(self, 'use_gpt4', False),
+                "pinecone_available": getattr(self, 'use_pinecone', False),
                 "faiss_index": self.faiss_index is not None,
                 "tfidf_vectorizer": self.tfidf_vectorizer is not None
             },

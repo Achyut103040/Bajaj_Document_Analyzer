@@ -28,6 +28,48 @@ load_dotenv()
 
 # Configuration settings
 class Config:
+    """Hackathon-optimized configuration with GPT-4 and Pinecone support"""
+    
+    # HACKATHON PRIMARY STACK
+    # GPT-4 Configuration (Primary LLM)
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    USE_GPT4 = bool(OPENAI_API_KEY)  # Auto-enable if API key present
+    
+    # Pinecone Configuration (Primary Vector DB)
+    PINECONE_API_KEY = os.getenv('PINECONE_API_KEY', '')
+    PINECONE_ENVIRONMENT = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1-aws')
+    USE_PINECONE = bool(PINECONE_API_KEY)  # Auto-enable if API key present
+    
+    # Server settings
+    API_HOST = os.getenv('API_HOST', '0.0.0.0')
+    API_PORT = int(os.getenv('API_PORT', 8001))
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+    
+    # Demo mode (fallback when APIs not available)
+    DEMO_MODE = os.getenv('DEMO_MODE', 'false').lower() == 'true'
+    
+    # Legacy settings (maintained for compatibility)
+    DATASETS_FOLDER = "Datasets"
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    SUPPORTED_FORMATS = ['.pdf']
+    MODEL_CACHE_DIR = './models'
+    TEMP_DIR = './temp'
+    
+    # Processing settings
+    MAX_CLAUSES_PER_SEARCH = 15
+    SIMILARITY_THRESHOLD = 0.8 if USE_GPT4 else 0.7
+    CONFIDENCE_THRESHOLD = 0.7 if USE_GPT4 else 0.6
+    
+    @classmethod
+    def get_status(cls):
+        """Get configuration status for debugging"""
+        return {
+            "gpt4_available": cls.USE_GPT4,
+            "pinecone_available": cls.USE_PINECONE, 
+            "demo_mode": cls.DEMO_MODE,
+            "api_port": cls.API_PORT,
+            "datasets_folder": cls.DATASETS_FOLDER
+        }
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     MODEL_CACHE_DIR = os.getenv('MODEL_CACHE_DIR', './models')
     TEMP_DIR = os.getenv('TEMP_DIR', './temp')
