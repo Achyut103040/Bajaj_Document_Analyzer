@@ -3,7 +3,7 @@
   "name": "bajaj-insurance-analyzer",
   "builds": [
     {
-      "src": "api.py",
+      "src": "app.py",
       "use": "@vercel/python",
       "config": {
         "maxLambdaSize": "50mb"
@@ -13,7 +13,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api.py"
+      "dest": "app.py"
     }
   ],
   "env": {
@@ -22,10 +22,12 @@
     "OPENAI_MODEL": "gpt-4-turbo-preview",
     "ENVIRONMENT": "production",
     "DEVICE": "cpu",
-    "DEMO_MODE": "false"
+    "DEMO_MODE": "false",
+    "PYTHONPATH": ".",
+    "VERCEL": "1"
   },
   "functions": {
-    "api.py": {
+    "app.py": {
       "maxDuration": 30
     }
   }
