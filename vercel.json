@@ -1,13 +1,9 @@
 {
   "version": 2,
-  "name": "bajaj-insurance-analyzer",
   "builds": [
     {
       "src": "app.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
+      "use": "@vercel/python"
     }
   ],
   "routes": [
@@ -15,20 +11,5 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
-  ],
-  "env": {
-    "HACKATHON_API_TOKEN": "@hackathon_api_token",
-    "OPENAI_API_KEY": "@openai_api_key",
-    "OPENAI_MODEL": "gpt-4-turbo-preview",
-    "ENVIRONMENT": "production",
-    "DEVICE": "cpu",
-    "DEMO_MODE": "false",
-    "PYTHONPATH": ".",
-    "VERCEL": "1"
-  },
-  "functions": {
-    "app.py": {
-      "maxDuration": 30
-    }
-  }
+  ]
 }
