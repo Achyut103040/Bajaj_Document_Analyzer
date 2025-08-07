@@ -217,55 +217,15 @@ def create_minimal_processor():
     return MinimalProcessor()
 
 def initialize_processor():
-    """Initialize the best available processor for production"""
+    """Initialize the built-in minimal processor for Vercel deployment"""
     global processor, processor_type
     
-    logger.info("🚀 Initializing processor for Vercel deployment...")
+    logger.info("🚀 Initializing built-in minimal processor for Vercel deployment...")
     
-    # Try lightweight processor first
-    try:
-        from lightweight_main import LightweightDocumentProcessor
-        processor = LightweightDocumentProcessor()
-        
-        # Quick initialization without heavy document loading
-        processor.documents = {"sample": "Loaded for production"}
-        processor.clause_database = []
-        
-        # Load documents if available
-        datasets_path = "Datasets"
-        if os.path.exists(datasets_path):
-            try:
-                processor.load_documents(datasets_path)
-                processor_type = "lightweight"
-                logger.info(f"✅ Lightweight processor ready: {len(processor.clause_database)} clauses")
-                return True
-            except Exception as e:
-                logger.warning(f"Document loading failed: {e}")
-        
-        # Use sample data if document loading fails
-        processor._create_sample_data()
-        processor_type = "lightweight_sample"
-        logger.info("✅ Lightweight processor ready with sample data")
-        return True
-        
-    except Exception as e:
-        logger.warning(f"Lightweight processor failed: {e}")
-    
-    # Try minimal processor
-    try:
-        from minimal_processor import MinimalDocumentProcessor
-        processor = MinimalDocumentProcessor()
-        processor.load_documents("Datasets" if os.path.exists("Datasets") else "")
-        processor_type = "minimal"
-        logger.info("✅ Minimal processor ready")
-        return True
-    except Exception as e:
-        logger.warning(f"Minimal processor failed: {e}")
-    
-    # Fallback to built-in minimal processor
+    # Use only the built-in minimal processor for guaranteed compatibility
     processor = create_minimal_processor()
     processor_type = "built_in_minimal"
-    logger.info("✅ Built-in minimal processor ready")
+    logger.info("✅ Built-in minimal processor ready with sample data")
     return True
 
 # Initialize FastAPI app
