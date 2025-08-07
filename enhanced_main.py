@@ -540,54 +540,75 @@ class OptimizedDocumentProcessor:
             logger.info(f"Knowledge base built with {len(all_clauses)} clauses")
     
     def _extract_clauses_advanced(self, text: str, doc_name: str) -> List[Dict[str, Any]]:
-        """Extract clauses with advanced segmentation"""
+        """Extract clauses with advanced segmentation - IMPROVED VERSION"""
         clauses = []
         
-        # Split into sentences
-        sentences = sent_tokenize(text)
-        
-        # Group sentences into meaningful clauses
-        current_clause = []
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
+        try:
+            # Split into sentences
+            sentences = sent_tokenize(text)
+            logger.info(f"Processing {len(sentences)} sentences from {doc_name}")
             
-            current_clause.append(sentence)
+            # Group sentences into meaningful clauses
+            current_clause = []
             
-            # End clause on certain patterns
-            if (len(current_clause) >= 3 and 
-                (sentence.endswith('.') or sentence.endswith(';') or 
-                 any(term in (sentence.lower() if sentence else '') for term in ['however', 'furthermore', 'additionally']))):
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if not sentence or len(sentence) < 5:  # Skip very short sentences
+                    continue
                 
-                clause_text = ' '.join(current_clause)
-                if len(clause_text.split()) >= 10:  # Minimum clause length
-                    clause_info = {
-                        'text': clause_text,
-                        'document': doc_name,
-                        'clause_type': self._classify_clause_advanced(clause_text),
-                        'entities': self._extract_entities_advanced(clause_text),
-                        'importance_score': self._calculate_importance_score(clause_text),
-                        'sentiment': self._analyze_sentiment(clause_text)
-                    }
-                    clauses.append(clause_info)
+                current_clause.append(sentence)
                 
-                current_clause = []
-        
-        # Add remaining clause if any
-        if current_clause:
-            clause_text = ' '.join(current_clause)
-            if len(clause_text.split()) >= 10:
-                clause_info = {
-                    'text': clause_text,
-                    'document': doc_name,
-                    'clause_type': self._classify_clause_advanced(clause_text),
-                    'entities': self._extract_entities_advanced(clause_text),
-                    'importance_score': self._calculate_importance_score(clause_text),
-                    'sentiment': self._analyze_sentiment(clause_text)
-                }
-                clauses.append(clause_info)
+                # End clause on certain patterns or when we have enough content
+                should_end_clause = (
+                    len(current_clause) >= 2 and  # Reduced from 3 to get more clauses
+                    (sentence.endswith('.') or sentence.endswith(';') or 
+                     sentence.endswith('!') or sentence.endswith('?') or
+                     any(term in sentence.lower() for term in ['however', 'furthermore', 'additionally', 'moreover', 'therefore']))
+                )
+                
+                # Also end clause if it gets too long
+                if len(' '.join(current_clause).split()) > 100:  # Max clause length
+                    should_end_clause = True
+                
+                if should_end_clause:
+                    clause_text = ' '.join(current_clause).strip()
+                    if len(clause_text.split()) >= 8:  # Reduced minimum length for more clauses
+                        try:
+                            clause_info = {
+                                'text': clause_text,
+                                'document': doc_name,
+                                'clause_type': self._classify_clause_advanced(clause_text),
+                                'entities': self._extract_entities_advanced(clause_text),
+                                'importance_score': self._calculate_importance_score(clause_text),
+                                'sentiment': self._analyze_sentiment(clause_text)
+                            }
+                            clauses.append(clause_info)
+                        except Exception as e:
+                            logger.warning(f"Error processing clause: {e}")
+                    
+                    current_clause = []
+            
+            # Add remaining clause if any
+            if current_clause:
+                clause_text = ' '.join(current_clause).strip()
+                if len(clause_text.split()) >= 8:
+                    try:
+                        clause_info = {
+                            'text': clause_text,
+                            'document': doc_name,
+                            'clause_type': self._classify_clause_advanced(clause_text),
+                            'entities': self._extract_entities_advanced(clause_text),
+                            'importance_score': self._calculate_importance_score(clause_text),
+                            'sentiment': self._analyze_sentiment(clause_text)
+                        }
+                        clauses.append(clause_info)
+                    except Exception as e:
+                        logger.warning(f"Error processing final clause: {e}")
+            
+            logger.info(f"Extracted {len(clauses)} clauses from {doc_name}")
+            
+        except Exception as e:
+            logger.error(f"Error in clause extraction for {doc_name}: {e}")
         
         return clauses
     
@@ -617,7 +638,7 @@ class OptimizedDocumentProcessor:
             return 'general_terms'
     
     def _extract_entities_advanced(self, text: str) -> Dict[str, List[str]]:
-        """Advanced entity extraction"""
+        """Advanced entity extraction - FIXED VERSION"""
         entities = {
             'procedures': [],
             'conditions': [],
@@ -634,23 +655,31 @@ class OptimizedDocumentProcessor:
             
         text_lower = text.lower()
         
-        # Extract procedures
-        for category, procedures in self.insurance_knowledge['procedures'].items():
-            for procedure in procedures:
-                if procedure in text_lower:
-                    entities['procedures'].append({
-                        'term': procedure,
-                        'category': category
-                    })
+        # Extract procedures - FIX: Handle nested structure correctly with error handling
+        try:
+            if hasattr(self, 'insurance_knowledge') and 'procedures' in self.insurance_knowledge:
+                for category, procedures in self.insurance_knowledge['procedures'].items():
+                    for procedure in procedures:
+                        if procedure in text_lower:
+                            entities['procedures'].append({
+                                'term': procedure,
+                                'category': category
+                            })
+        except Exception as e:
+            logger.warning(f"Error extracting procedures: {e}")
         
-        # Extract conditions
-        for category, conditions in self.insurance_knowledge['conditions'].items():
-            for condition in conditions:
-                if condition in text_lower:
-                    entities['conditions'].append({
-                        'term': condition,
-                        'category': category
-                    })
+        # Extract conditions - FIX: Handle nested structure correctly with error handling
+        try:
+            if hasattr(self, 'insurance_knowledge') and 'conditions' in self.insurance_knowledge:
+                for category, conditions in self.insurance_knowledge['conditions'].items():
+                    for condition in conditions:
+                        if condition in text_lower:
+                            entities['conditions'].append({
+                                'term': condition,
+                                'category': category
+                            })
+        except Exception as e:
+            logger.warning(f"Error extracting conditions: {e}")
         
         # Extract monetary amounts
         money_patterns = [

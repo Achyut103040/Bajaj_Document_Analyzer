@@ -244,7 +244,7 @@ async def startup_event():
     """Optimized processor initialization with smart fallback"""
     global processor, processor_type
     
-    dataset_path = "d:/Bajaj_Finserv/Datasets"
+    dataset_path = "Datasets"  # Use relative path to current directory
     logger.info("🚀 Starting optimized document processor initialization...")
     
     # Try enhanced processor first (if NLTK data is available)
