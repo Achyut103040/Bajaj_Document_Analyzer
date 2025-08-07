@@ -1,33 +1,24 @@
-# VERCEL OPTIMIZED REQUIREMENTS - HACKATHON SUBMISSION
+# VERCEL PRODUCTION REQUIREMENTS - LIGHTWEIGHT FOR SERVERLESS
 # Core Web Framework
 fastapi==0.104.1
-uvicorn[standard]==0.24.0
+uvicorn==0.24.0
 python-multipart==0.0.6
 python-dotenv==1.0.0
 pydantic==2.5.0
 
-# Core ML Libraries (CPU-optimized for Vercel)
-torch==2.1.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu
-transformers==4.36.0
-sentence-transformers==2.2.2
+# Essential ML Libraries (Lightweight)
 scikit-learn==1.3.2
-numpy==1.25.2
-pandas==2.1.3
-faiss-cpu==1.7.4
-
-# NLP Libraries
-spacy==3.7.2
-nltk==3.8.1
+numpy==1.24.3
 
 # PDF Processing
 PyPDF2==3.0.1
-PyMuPDF==1.23.8
 
 # API & Cloud Services
 openai==1.3.0
-pinecone==3.0.0
 requests==2.31.0
 
 # Utilities
-aiofiles==23.2.1
-jinja2==3.1.2
+aiofiles==0.24.0
+
+# Note: Heavy ML libraries (torch, transformers, sentence-transformers, faiss, etc.) 
+# are removed for Vercel serverless compatibility. The app uses fallback processors.
